@@ -1,0 +1,8 @@
+# Level 03: move upward to a rocket win object.
+. . . rocket . . .
+. . . . . . .
+. . . . . . .
+. . . . . . .
+. . . baba . . .
+text_baba is you . . . .
+text_rocket is win . . . .

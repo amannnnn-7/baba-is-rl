@@ -1,0 +1,10 @@
+# Level 16: rocks are pushable blockers, skull is defeat, and FLAG IS WIN is broken.
+wall wall wall wall wall wall wall wall wall
+wall baba rock . . flag . skull wall
+wall . wall wall . . . . wall
+wall . text_flag is . win . . wall
+wall . . . . . . . wall
+wall . . . . . . . wall
+wall text_baba is you . text_rock is push wall
+wall text_skull is defeat . text_wall is stop wall
+wall wall wall wall wall wall wall wall wall

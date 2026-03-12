@@ -10,12 +10,13 @@ import rendering
 class BabaEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, enable_render=True):
+    def __init__(self, enable_render=False):
         super(BabaEnv, self).__init__()
 
         self.path = '../../../Resources/Maps/out_of_reach.txt'
         self.game = pyBaba.Game(self.path)
-        self.renderer = rendering.Renderer(self.game)
+        self.enable_render = enable_render
+        self.renderer = None
 
         self.action_space = [
             pyBaba.Direction.UP,
@@ -57,8 +58,18 @@ class BabaEnv(gym.Env):
         return self.get_obs(), reward, self.done, {}
 
     def render(self, mode='human', close=False):
+        if self.renderer is None and self.enable_render is True:
+            self.renderer = rendering.Renderer(
+                self.game, enable_render=self.enable_render)
+
         if close:
-            self.renderer.quit_game()
+            if self.renderer is not None:
+                self.renderer.quit_game()
+                self.renderer = None
+            return None
+
+        if self.renderer is None:
+            return None
 
         return self.renderer.render(self.game.GetMap(), mode)
 

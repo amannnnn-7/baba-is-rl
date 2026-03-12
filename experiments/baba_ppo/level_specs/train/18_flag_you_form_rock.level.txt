@@ -1,0 +1,10 @@
+# Level 18: flag is you, then form ROCK IS WIN in a wall maze.
+wall wall wall wall wall wall wall wall wall
+wall flag . . . wall . rock wall
+wall . wall wall . wall . . wall
+wall . . . . wall . . wall
+wall . text_rock is . win . . wall
+wall . wall wall . wall . . wall
+wall . . . . . . . wall
+wall text_flag is you . text_wall is stop wall
+wall wall wall wall wall wall wall wall wall

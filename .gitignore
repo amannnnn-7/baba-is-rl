@@ -32,5 +32,23 @@ cmake-build-debug
 *.pyc
 /.pytest_cache
 
-# RL files
+# Python environments
+.venv/
+
+# RL / experiment artifacts
 events.out.tfevents.*
+experiments/baba_ppo/logs/*
+!experiments/baba_ppo/logs/.gitkeep
+experiments/baba_ppo/checkpoints/*
+!experiments/baba_ppo/checkpoints/.gitkeep
+
+# Large model / array artifacts
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.bin
+*.npy
+*.npz
+*.pkl
+*.joblib

@@ -1,0 +1,8 @@
+# Level 01: basic reach to a flag win object.
+baba . . . . . .
+. . . . . . .
+. . . . . flag .
+. . . . . . .
+. . . . . . .
+text_baba is you . . . .
+text_flag is win . . . .

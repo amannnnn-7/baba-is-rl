@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: pyBaba
+Version: 0.1
+Summary: Baba Is You simulator with some reinforcement learning
+Author: Chris Ohk
+Author-email: utilforever@gmail.com
+License-File: LICENSE
+Dynamic: author
+Dynamic: author-email
+Dynamic: license-file
+Dynamic: summary

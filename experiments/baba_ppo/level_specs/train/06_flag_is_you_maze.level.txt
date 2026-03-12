@@ -1,0 +1,10 @@
+# Level 06: flag is you, rock is win, with a longer wall maze.
+wall wall wall wall wall wall wall wall wall
+wall flag . . wall . . rock wall
+wall . wall . wall . wall . wall
+wall . wall . . . wall . wall
+wall . wall wall wall . wall . wall
+wall . . . . . wall . wall
+wall text_flag is you . text_rock is win wall
+wall text_wall is stop . . . . wall
+wall wall wall wall wall wall wall wall wall

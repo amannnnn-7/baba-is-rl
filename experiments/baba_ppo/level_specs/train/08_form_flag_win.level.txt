@@ -1,0 +1,8 @@
+# Level 08: form FLAG IS WIN by pushing WIN left one tile.
+. . . . . . .
+. baba . . . flag .
+. . . . . . .
+. text_flag is . win . .
+. . . . . . .
+. text_baba is you . . .
+. . . . . . .

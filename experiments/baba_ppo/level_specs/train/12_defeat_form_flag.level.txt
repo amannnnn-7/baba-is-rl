@@ -1,0 +1,10 @@
+# Level 12: form FLAG IS WIN while avoiding a defeat tile.
+wall wall wall wall wall wall wall wall wall
+wall baba . . . . flag . wall
+wall . skull . . . . . wall
+wall . . . . . . . wall
+wall . text_flag is . win . . wall
+wall . . . . . . . wall
+wall text_baba is you . text_skull is defeat wall
+wall . . . . . . . wall
+wall wall wall wall wall wall wall wall wall

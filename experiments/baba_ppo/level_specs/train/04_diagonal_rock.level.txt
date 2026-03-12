@@ -1,0 +1,8 @@
+# Level 04: diagonal travel to a distant rock win object.
+. . . . . . rock
+. . . . . . .
+. . . . . . .
+. . . baba . . .
+. . . . . . .
+text_baba is you . . . .
+text_rock is win . . . .

@@ -1,0 +1,10 @@
+# Level 13: form ROCK IS WIN with walls and a longer route.
+wall wall wall wall wall wall wall wall wall
+wall baba . . . . rock . wall
+wall . wall wall wall . . . wall
+wall . . . . . . . wall
+wall . text_rock is . win . . wall
+wall . wall wall wall . . . wall
+wall . . . . . . . wall
+wall text_baba is you . text_wall is stop wall
+wall wall wall wall wall wall wall wall wall

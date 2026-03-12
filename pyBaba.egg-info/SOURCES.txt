@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+pyBaba.egg-info/PKG-INFO
+pyBaba.egg-info/SOURCES.txt
+pyBaba.egg-info/dependency_links.txt
+pyBaba.egg-info/not-zip-safe
+pyBaba.egg-info/top_level.txt

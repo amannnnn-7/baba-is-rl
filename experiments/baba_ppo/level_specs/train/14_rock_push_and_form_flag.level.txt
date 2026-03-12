@@ -1,0 +1,9 @@
+# Level 14: pushable rock blockers plus a broken FLAG IS WIN rule.
+baba rock rock . flag . . .
+. . . . . . . .
+. text_flag is . win . . .
+. . . . . . . .
+text_baba is you . text_rock is push .
+. . . . . . . .
+. . . . . . . .
+. . . . . . . .

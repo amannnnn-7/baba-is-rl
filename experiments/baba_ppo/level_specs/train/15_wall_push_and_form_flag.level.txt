@@ -1,0 +1,9 @@
+# Level 15: movable wall blockers plus a broken FLAG IS WIN rule.
+baba wall wall wall flag . . .
+. . . . . . . .
+. text_flag is . win . . .
+. . . . . . . .
+text_baba is you . text_wall is push .
+. . . . . . . .
+. . . . . . . .
+. . . . . . . .

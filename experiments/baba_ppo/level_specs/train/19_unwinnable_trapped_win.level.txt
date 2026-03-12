@@ -1,0 +1,10 @@
+# Level 19: unwinnable because the WIN text is trapped behind stop walls.
+wall wall wall wall wall wall wall wall wall
+wall baba . . . . flag . wall
+wall . wall wall wall wall wall . wall
+wall . wall win wall . . . wall
+wall . wall wall wall . . . wall
+wall text_wall is stop . . . . wall
+wall text_baba is you . . . . wall
+wall text_flag is . . . . . wall
+wall wall wall wall wall wall wall wall wall

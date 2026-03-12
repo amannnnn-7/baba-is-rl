@@ -1,0 +1,10 @@
+# Level 20: unwinnable because the flag win object is fully enclosed.
+wall wall wall wall wall wall wall wall wall
+wall baba . . . . . . wall
+wall . wall wall wall . . . wall
+wall . wall flag wall . . . wall
+wall . wall wall wall . . . wall
+wall . . . . . . . wall
+wall text_wall is stop . text_baba is you wall
+wall text_flag is win . . . . wall
+wall wall wall wall wall wall wall wall wall

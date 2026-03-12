@@ -1,0 +1,10 @@
+# Level 07: rocket is you through a corridor to a flag win object.
+wall wall wall wall wall wall wall wall wall
+wall . . . . . . flag wall
+wall . wall wall wall wall . . wall
+wall rocket . . . wall . . wall
+wall . wall . . wall . . wall
+wall . wall . . . . . wall
+wall text_rocket is you . text_flag is win wall
+wall text_wall is stop . . . . wall
+wall wall wall wall wall wall wall wall wall

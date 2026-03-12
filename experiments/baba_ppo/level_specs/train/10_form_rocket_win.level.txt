@@ -1,0 +1,8 @@
+# Level 10: form ROCKET IS WIN by pushing WIN left.
+. . . . . . .
+. . rocket . . . .
+. . . . . . .
+. text_rocket is . win . .
+. . . . . . .
+. . baba . . . .
+text_baba is you . . . .

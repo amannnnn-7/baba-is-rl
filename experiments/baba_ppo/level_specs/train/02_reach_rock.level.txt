@@ -1,0 +1,8 @@
+# Level 02: basic reach to a rock win object.
+. rock . . . . .
+. . . . . . .
+. . . . . . .
+. . . . . . .
+. . . . . . baba
+text_baba is you . . . .
+text_rock is win . . . .
