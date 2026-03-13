@@ -84,14 +84,14 @@ class RewardShapingWrapper(gym.Wrapper):
 
         state_changed = current_signature != previous_signature
         repeated_loop = self._visit_counts[current_signature] >= self.config.stuck_visit_limit
-        stuck = (not state_changed) or repeated_loop
+        stuck = repeated_loop
 
         reward = self.config.step_penalty
         if info.get("play_state") == pyBaba.PlayState.WON.name:
             reward = self.config.win_reward
         elif info.get("play_state") == pyBaba.PlayState.LOST.name:
             reward = self.config.loss_reward
-        elif not terminated and not truncated and stuck:
+        elif not terminated and not truncated and repeated_loop:
             reward = self.config.loss_reward
             terminated = True
             truncated = False

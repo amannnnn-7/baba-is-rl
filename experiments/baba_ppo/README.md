@@ -54,3 +54,20 @@ wall wall wall wall wall
 	- `episode_metrics.jsonl`: per-episode training records
 	- `eval_metrics.jsonl`: evaluation summaries
 	- `eval_episode_metrics.jsonl`: per-episode evaluation records
+	- `curriculum_events.jsonl`: curriculum stage promotion events
+	- `config.json`: snapshot of the config used for the run
+
+### Clearing logs before a new run
+
+To remove all logs and checkpoints from a previous run:
+
+```bash
+# Remove all log files
+rm -f experiments/baba_ppo/logs/*.jsonl experiments/baba_ppo/logs/config.json
+
+# Remove all checkpoints
+rm -rf experiments/baba_ppo/checkpoints/*
+
+# Or remove both at once
+rm -f experiments/baba_ppo/logs/*.jsonl experiments/baba_ppo/logs/config.json && rm -rf experiments/baba_ppo/checkpoints/*
+```

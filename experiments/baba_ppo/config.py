@@ -72,11 +72,27 @@ class RuntimeConfig:
 
 
 @dataclass(slots=True)
+class CurriculumStageConfig:
+    name: str
+    level_filenames: list[str]
+
+
+@dataclass(slots=True)
+class CurriculumConfig:
+    enabled: bool = False
+    promotion_threshold: float = 0.8
+    consecutive_evals: int = 2
+    min_updates_per_stage: int = 10
+    stages: list[CurriculumStageConfig] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ExperimentConfig:
     env: EnvConfig = field(default_factory=EnvConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     ppo: PPOConfig = field(default_factory=PPOConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return _convert_paths(asdict(self))

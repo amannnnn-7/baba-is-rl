@@ -9,6 +9,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from experiments.baba_ppo.config import ExperimentConfig
+from experiments.baba_ppo.config import CurriculumStageConfig
 from experiments.baba_ppo.envs import discover_level_paths
 from experiments.baba_ppo.trainer import PPOTrainer
 
@@ -19,22 +20,92 @@ def build_first_run_config() -> ExperimentConfig:
     config.env.eval_level_dir = Path("experiments/baba_ppo/levels/test")
     config.env.level_sampling = "random"
     config.env.max_steps = 192
-    config.env.stuck_visit_limit = 4
+    config.env.stuck_visit_limit = 6
     config.env.num_envs = 32
 
-    config.ppo.total_timesteps = 5_000_000
+    config.ppo.total_timesteps = 75_000_000
     config.ppo.rollout_steps = 128
     config.ppo.minibatch_size = 1024
-    config.ppo.update_epochs = 6
-    config.ppo.learning_rate = 3e-4
+    config.ppo.update_epochs = 4
+    config.ppo.learning_rate = 1e-4
+    config.ppo.ent_coef = 0.03
+    config.ppo.target_kl = 0.01
 
     config.runtime.device = "auto"
     config.runtime.mixed_precision = True
     config.runtime.compile_model = False
-    config.runtime.eval_every_updates = 25
+    config.runtime.eval_every_updates = 10
     config.runtime.checkpoint_every_updates = 25
-    config.runtime.num_eval_episodes = 40
+    config.runtime.num_eval_episodes = 60
     config.runtime.eval_batch_size = 8
+
+    config.curriculum.enabled = True
+    config.curriculum.promotion_threshold = 0.8
+    config.curriculum.consecutive_evals = 5
+    config.curriculum.min_updates_per_stage = 10
+    config.curriculum.stages = [
+        CurriculumStageConfig(
+            name="stage_1_navigation_basics",
+            level_filenames=[
+                "01_reach_flag.txt",
+                "02_reach_rock.txt",
+                "03_reach_rocket.txt",
+                "04_diagonal_rock.txt",
+            ],
+        ),
+        CurriculumStageConfig(
+            name="stage_2_alternate_you",
+            level_filenames=[
+                "05_rock_is_you_maze.txt",
+                "06_flag_is_you_maze.txt",
+                "07_rocket_is_you_maze.txt",
+            ],
+        ),
+        CurriculumStageConfig(
+            name="stage_3_rule_building_intro",
+            level_filenames=[
+                "08_form_flag_win.txt",
+                "09_form_rock_win.txt",
+                "10_form_rocket_win.txt",
+                "11_wall_maze_form_flag.txt",
+                "12_defeat_form_flag.txt",
+                "13_wall_maze_form_rock.txt",
+            ],
+        ),
+        CurriculumStageConfig(
+            name="stage_4_push_and_compose",
+            level_filenames=[
+                "14_rock_push_and_form_flag.txt",
+                "15_wall_push_and_form_flag.txt",
+                "16_rock_push_skull_form_flag.txt",
+                "17_rocket_you_form_flag.txt",
+                "18_flag_you_form_rock.txt",
+            ],
+        ),
+        CurriculumStageConfig(
+            name="stage_5_full_solvable_mix",
+            level_filenames=[
+                "01_reach_flag.txt",
+                "02_reach_rock.txt",
+                "03_reach_rocket.txt",
+                "04_diagonal_rock.txt",
+                "05_rock_is_you_maze.txt",
+                "06_flag_is_you_maze.txt",
+                "07_rocket_is_you_maze.txt",
+                "08_form_flag_win.txt",
+                "09_form_rock_win.txt",
+                "10_form_rocket_win.txt",
+                "11_wall_maze_form_flag.txt",
+                "12_defeat_form_flag.txt",
+                "13_wall_maze_form_rock.txt",
+                "14_rock_push_and_form_flag.txt",
+                "15_wall_push_and_form_flag.txt",
+                "16_rock_push_skull_form_flag.txt",
+                "17_rocket_you_form_flag.txt",
+                "18_flag_you_form_rock.txt",
+            ],
+        ),
+    ]
     return config
 
 
@@ -104,8 +175,20 @@ def print_training_budget(config: ExperimentConfig) -> None:
     print()
     print("Interpretation")
     print("- episodes are not capped per level; the trainer uses a global timestep budget")
-    print("- with random level sampling, each level is expected to receive roughly the same number of attempts")
+    print("- sampling happens within the currently active curriculum stage, not across every level at once")
     print("- the 192-step horizon gives extra room for rule-building and exploration compared with the base 160-step default")
+    if config.curriculum.enabled and config.curriculum.stages:
+        print()
+        print("Curriculum plan")
+        print(
+            "- stage promotion requires every level in the active stage to reach win_rate >= "
+            f"{config.curriculum.promotion_threshold:.2f} for "
+            f"{config.curriculum.consecutive_evals} consecutive evaluations"
+        )
+        print(f"- minimum updates before promotion: {config.curriculum.min_updates_per_stage}")
+        for index, stage in enumerate(config.curriculum.stages, start=1):
+            print(f"  {index}. {stage.name}: {len(stage.level_filenames)} level(s)")
+        print("- unwinnable levels 19 and 20 are excluded from the promotion curriculum")
 
 
 def main() -> None:

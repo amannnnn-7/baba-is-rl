@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import random
 from collections import deque
+from collections import defaultdict
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
@@ -50,18 +51,23 @@ def evaluate_policy(
     config: ExperimentConfig,
     *,
     checkpoint_step: int,
+    level_paths: list[Path] | None = None,
+    num_eval_episodes: int | None = None,
+    eval_name: str | None = None,
     metrics_path: Path | None = None,
     show_progress: bool = True,
 ) -> dict[str, float]:
-    eval_level_dir = config.env.eval_level_dir
-    try:
-        level_paths = discover_level_paths(eval_level_dir)
-    except FileNotFoundError:
-        level_paths = discover_level_paths(config.env.train_level_dir)
+    if level_paths is None:
+        eval_level_dir = config.env.eval_level_dir
+        try:
+            level_paths = discover_level_paths(eval_level_dir)
+        except FileNotFoundError:
+            level_paths = discover_level_paths(config.env.train_level_dir)
 
     train_levels = discover_level_paths(config.env.train_level_dir)
     pad_shape = resolve_pad_shape(train_levels + level_paths)
-    batch_size = min(config.runtime.eval_batch_size, config.runtime.num_eval_episodes)
+    eval_episodes = num_eval_episodes or config.runtime.num_eval_episodes
+    batch_size = min(config.runtime.eval_batch_size, eval_episodes)
     eval_env = make_batched_env(
         level_paths,
         config=config.env,
@@ -75,16 +81,20 @@ def evaluate_policy(
     lengths: list[int] = []
     wins = 0
     stucks = 0
+    per_level_returns: dict[str, list[float]] = defaultdict(list)
+    per_level_lengths: dict[str, list[int]] = defaultdict(list)
+    per_level_wins: dict[str, int] = defaultdict(int)
+    per_level_stucks: dict[str, int] = defaultdict(int)
     progress = tqdm(
-        total=config.runtime.num_eval_episodes,
-        desc="Eval episodes",
+        total=eval_episodes,
+        desc=eval_name or "Eval episodes",
         leave=False,
         dynamic_ncols=True,
         disable=not show_progress,
     )
 
     policy.eval()
-    while len(returns) < config.runtime.num_eval_episodes:
+    while len(returns) < eval_episodes:
         obs_tensor = torch.as_tensor(observations, device=next(policy.parameters()).device)
         with torch.no_grad():
             logits, _ = policy(obs_tensor)
@@ -97,15 +107,22 @@ def evaluate_policy(
             final_info = info.get("final_info", info)
             episode_return = float(info["episode"]["r"])
             episode_length = int(info["episode"]["l"])
+            level_path = str(final_info.get("level_path"))
+            level_name = Path(level_path).name if level_path else "unknown"
             returns.append(float(info["episode"]["r"]))
             lengths.append(int(info["episode"]["l"]))
             wins += int(final_info.get("play_state") == "WON")
             stucks += int(final_info.get("is_stuck", False))
+            per_level_returns[level_name].append(episode_return)
+            per_level_lengths[level_name].append(episode_length)
+            per_level_wins[level_name] += int(final_info.get("play_state") == "WON")
+            per_level_stucks[level_name] += int(final_info.get("is_stuck", False))
             if metrics_path is not None:
                 append_jsonl(
                     metrics_path,
                     {
                         "global_step": checkpoint_step,
+                        "eval_name": eval_name,
                         "level_path": final_info.get("level_path"),
                         "episode_return": episode_return,
                         "episode_length": episode_length,
@@ -122,18 +139,37 @@ def evaluate_policy(
                 mean_return=f"{np.mean(returns):.2f}",
                 win_rate=f"{wins / len(returns):.2f}",
             )
-            if len(returns) >= config.runtime.num_eval_episodes:
+            if len(returns) >= eval_episodes:
                 break
 
     eval_env.close()
     progress.close()
+    per_level_metrics = {
+        level_name: {
+            "episodes": len(level_returns),
+            "mean_return": float(np.mean(level_returns)),
+            "mean_length": float(np.mean(per_level_lengths[level_name])),
+            "win_rate": per_level_wins[level_name] / max(len(level_returns), 1),
+            "stuck_rate": per_level_stucks[level_name] / max(len(level_returns), 1),
+        }
+        for level_name, level_returns in sorted(per_level_returns.items())
+    }
+    min_level_win_rate = min(
+        (metrics["win_rate"] for metrics in per_level_metrics.values()),
+        default=0.0,
+    )
     return {
         "step": float(checkpoint_step),
+        "eval_name": eval_name,
+        "num_levels": len(level_paths),
+        "num_eval_episodes": eval_episodes,
         "mean_return": float(np.mean(returns)),
         "std_return": float(np.std(returns)),
         "mean_length": float(np.mean(lengths)),
         "win_rate": wins / len(returns),
         "stuck_rate": stucks / len(returns),
+        "min_level_win_rate": float(min_level_win_rate),
+        "per_level_metrics": per_level_metrics,
     }
 
 
@@ -150,6 +186,7 @@ class PPOTrainer:
         self.episode_metrics_path = self.log_dir / "episode_metrics.jsonl"
         self.eval_metrics_path = self.log_dir / "eval_metrics.jsonl"
         self.eval_episode_metrics_path = self.log_dir / "eval_episode_metrics.jsonl"
+        self.curriculum_events_path = self.log_dir / "curriculum_events.jsonl"
 
         set_global_seed(config.runtime.seed)
         torch.backends.cudnn.benchmark = self.device.type == "cuda"
@@ -161,13 +198,18 @@ class PPOTrainer:
             self.eval_levels = self.train_levels
 
         self.pad_shape = resolve_pad_shape(self.train_levels + self.eval_levels)
-        self.train_env = make_batched_env(
-            self.train_levels,
-            config=config.env,
-            num_envs=config.env.num_envs,
-            pad_to_shape=self.pad_shape,
-            level_sampling=config.env.level_sampling,
+        self.curriculum_stages = self._resolve_curriculum_stages()
+        self.curriculum_enabled = bool(config.curriculum.enabled and self.curriculum_stages)
+        self.current_stage_index = 0
+        self.current_stage_eval_streak = 0
+        self.stage_start_update = 1
+        self.active_train_levels = (
+            self.curriculum_stages[0]["level_paths"] if self.curriculum_enabled else self.train_levels
         )
+        self.current_stage_name = (
+            self.curriculum_stages[0]["name"] if self.curriculum_enabled else "all_train_levels"
+        )
+        self.train_env = self._build_train_env(self.active_train_levels)
 
         observation_shape = self.train_env.single_observation_space.shape
         num_actions = self.train_env.single_action_space.n
@@ -185,6 +227,129 @@ class PPOTrainer:
             weight_decay=config.ppo.weight_decay,
             eps=1e-5,
         )
+
+    def _resolve_curriculum_stages(self) -> list[dict[str, Any]]:
+        if not self.config.curriculum.enabled:
+            return []
+
+        train_level_map = {path.name: path for path in self.train_levels}
+        resolved_stages: list[dict[str, Any]] = []
+        for stage in self.config.curriculum.stages:
+            missing = [name for name in stage.level_filenames if name not in train_level_map]
+            if missing:
+                raise FileNotFoundError(
+                    f"Curriculum stage {stage.name} references missing levels: {missing}"
+                )
+            level_paths = [train_level_map[name] for name in stage.level_filenames]
+            resolved_stages.append({"name": stage.name, "level_paths": level_paths})
+
+        return resolved_stages
+
+    def _build_train_env(self, level_paths: list[Path]):
+        return make_batched_env(
+            level_paths,
+            config=self.config.env,
+            num_envs=self.config.env.num_envs,
+            pad_to_shape=self.pad_shape,
+            level_sampling=self.config.env.level_sampling,
+        )
+
+    def _activate_curriculum_stage(self, stage_index: int, *, global_step: int, update: int) -> None:
+        if self.train_env is not None:
+            self.train_env.close()
+
+        self.current_stage_index = stage_index
+        stage = self.curriculum_stages[stage_index]
+        self.active_train_levels = stage["level_paths"]
+        self.current_stage_name = stage["name"]
+        self.current_stage_eval_streak = 0
+        self.stage_start_update = update + 1
+        self.train_env = self._build_train_env(self.active_train_levels)
+
+        append_jsonl(
+            self.curriculum_events_path,
+            {
+                "event": "stage_activated",
+                "global_step": global_step,
+                "update": update,
+                "stage_index": stage_index,
+                "stage_name": self.current_stage_name,
+                "num_levels": len(self.active_train_levels),
+                "level_paths": [str(path) for path in self.active_train_levels],
+            },
+        )
+
+    def _maybe_advance_curriculum(
+        self,
+        *,
+        update: int,
+        global_step: int,
+        eval_metrics: dict[str, Any],
+    ) -> bool:
+        if not self.curriculum_enabled:
+            return False
+
+        updates_in_stage = update - self.stage_start_update + 1
+        if updates_in_stage < self.config.curriculum.min_updates_per_stage:
+            append_jsonl(
+                self.curriculum_events_path,
+                {
+                    "event": "stage_eval",
+                    "global_step": global_step,
+                    "update": update,
+                    "stage_index": self.current_stage_index,
+                    "stage_name": self.current_stage_name,
+                    "win_rate": eval_metrics["win_rate"],
+                    "min_level_win_rate": eval_metrics.get("min_level_win_rate", eval_metrics["win_rate"]),
+                    "per_level_metrics": eval_metrics.get("per_level_metrics", {}),
+                    "streak": self.current_stage_eval_streak,
+                    "promoted": False,
+                    "reason": "min_updates_not_met",
+                },
+            )
+            return False
+
+        promotion_metric = eval_metrics.get("min_level_win_rate", eval_metrics["win_rate"])
+        if promotion_metric >= self.config.curriculum.promotion_threshold:
+            self.current_stage_eval_streak += 1
+        else:
+            self.current_stage_eval_streak = 0
+
+        promoted = False
+        reason = "threshold_met" if self.current_stage_eval_streak else "threshold_not_met"
+        if (
+            self.current_stage_eval_streak >= self.config.curriculum.consecutive_evals
+            and self.current_stage_index + 1 < len(self.curriculum_stages)
+        ):
+            promoted = True
+            reason = "promoted"
+
+        append_jsonl(
+            self.curriculum_events_path,
+            {
+                "event": "stage_eval",
+                "global_step": global_step,
+                "update": update,
+                "stage_index": self.current_stage_index,
+                "stage_name": self.current_stage_name,
+                "win_rate": eval_metrics["win_rate"],
+                "min_level_win_rate": promotion_metric,
+                "per_level_metrics": eval_metrics.get("per_level_metrics", {}),
+                "streak": self.current_stage_eval_streak,
+                "promoted": promoted,
+                "reason": reason,
+            },
+        )
+
+        if promoted:
+            self._activate_curriculum_stage(
+                self.current_stage_index + 1,
+                global_step=global_step,
+                update=update,
+            )
+            return True
+
+        return False
 
     def autocast_context(self):
         if self.device.type != "cuda" or not self.config.runtime.mixed_precision:
@@ -205,6 +370,19 @@ class PPOTrainer:
 
         config_path = self.log_dir / "config.json"
         config_path.write_text(json.dumps(self.config.to_dict(), indent=2), encoding="utf-8")
+        if self.curriculum_enabled:
+            append_jsonl(
+                self.curriculum_events_path,
+                {
+                    "event": "stage_activated",
+                    "global_step": 0,
+                    "update": 0,
+                    "stage_index": self.current_stage_index,
+                    "stage_name": self.current_stage_name,
+                    "num_levels": len(self.active_train_levels),
+                    "level_paths": [str(path) for path in self.active_train_levels],
+                },
+            )
 
         global_step = 0
         progress = tqdm(
@@ -257,6 +435,7 @@ class PPOTrainer:
                             update=update,
                             rollout_step=step,
                             env_index=env_index,
+                            stage_name=self.current_stage_name,
                             info=info,
                             terminated=bool(terminateds[env_index]),
                             truncated=bool(truncateds[env_index]),
@@ -297,6 +476,7 @@ class PPOTrainer:
             )
             append_jsonl(self.train_metrics_path, metrics)
             progress.set_postfix(
+                stage=self.current_stage_index + 1,
                 reward=f"{metrics['mean_episode_return']:.2f}",
                 win=f"{metrics['recent_win_rate']:.2f}",
                 stuck=f"{metrics['recent_stuck_rate']:.2f}",
@@ -310,23 +490,55 @@ class PPOTrainer:
                 self.save_checkpoint(self.checkpoint_dir / f"update_{update:05d}.pt", global_step)
 
             if update % self.config.runtime.eval_every_updates == 0 or update == total_updates:
+                eval_level_paths = self.active_train_levels if self.curriculum_enabled else None
+                eval_name = (
+                    f"curriculum::{self.current_stage_name}"
+                    if self.curriculum_enabled
+                    else "train_eval"
+                )
+                eval_episodes = (
+                    max(self.config.runtime.num_eval_episodes, len(self.active_train_levels) * 10)
+                    if self.curriculum_enabled
+                    else self.config.runtime.num_eval_episodes
+                )
                 eval_metrics = evaluate_policy(
                     self.policy,
                     self.config,
                     checkpoint_step=global_step,
+                    level_paths=eval_level_paths,
+                    num_eval_episodes=eval_episodes,
+                    eval_name=eval_name,
                     metrics_path=self.eval_episode_metrics_path,
                 )
+                eval_metrics["stage_name"] = self.current_stage_name
+                eval_metrics["stage_index"] = self.current_stage_index
                 append_jsonl(self.eval_metrics_path, eval_metrics)
                 print(
                     "[eval] "
                     f"step={global_step} "
                     f"mean_return={eval_metrics['mean_return']:.3f} "
                     f"win_rate={eval_metrics['win_rate']:.3f} "
+                    f"min_level_win={eval_metrics.get('min_level_win_rate', eval_metrics['win_rate']):.3f} "
                     f"stuck_rate={eval_metrics['stuck_rate']:.3f}"
+                )
+                stage_changed = self._maybe_advance_curriculum(
+                    update=update,
+                    global_step=global_step,
+                    eval_metrics=eval_metrics,
                 )
                 if eval_metrics["mean_return"] >= best_eval_return:
                     best_eval_return = eval_metrics["mean_return"]
                     self.save_checkpoint(best_checkpoint, global_step)
+                if stage_changed:
+                    recent_episodes.clear()
+                    observations, _ = self.train_env.reset(
+                        seed=self.config.runtime.seed + global_step + self.current_stage_index
+                    )
+                    next_dones = torch.zeros(
+                        self.config.env.num_envs,
+                        dtype=torch.float32,
+                        device=self.device,
+                    )
 
         progress.close()
         self.train_env.close()
@@ -378,6 +590,9 @@ class PPOTrainer:
         return {
             "global_step": global_step,
             "update": update,
+            "stage_index": self.current_stage_index,
+            "stage_name": self.current_stage_name,
+            "num_active_levels": len(self.active_train_levels),
             "completed_episodes_window": len(recent_episodes),
             "mean_episode_return": mean_return,
             "mean_episode_length": mean_length,
@@ -412,6 +627,7 @@ class PPOTrainer:
         update: int,
         rollout_step: int,
         env_index: int,
+        stage_name: str,
         info: dict[str, Any],
         terminated: bool,
         truncated: bool,
@@ -437,6 +653,7 @@ class PPOTrainer:
         return {
             "global_step": global_step,
             "update": update,
+            "stage_name": stage_name,
             "rollout_step": rollout_step,
             "env_index": env_index,
             "level_path": final_info.get("level_path"),
@@ -463,6 +680,7 @@ class PPOTrainer:
             "[train] "
             f"step={metrics['global_step']} "
             f"update={metrics['update']} "
+            f"stage={metrics['stage_name']} "
             f"return={metrics['mean_episode_return']:.3f} "
             f"length={metrics['mean_episode_length']:.2f} "
             f"win={metrics['recent_win_rate']:.3f} "

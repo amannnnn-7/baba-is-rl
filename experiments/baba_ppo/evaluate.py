@@ -22,7 +22,7 @@ def apply_checkpoint_config(
     if not checkpoint_config:
         return
 
-    for section_name in ("env", "model", "ppo", "runtime"):
+    for section_name in ("env", "model", "ppo", "runtime", "curriculum"):
         section_values = checkpoint_config.get(section_name)
         section = getattr(config, section_name)
         if not isinstance(section_values, dict):
